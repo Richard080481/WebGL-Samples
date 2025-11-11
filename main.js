@@ -1,87 +1,141 @@
-const canvas = document.getElementById("glcanvas");
-const gl = canvas.getContext("webgl");
+const canvas = document.getElementById('canvas');
+const gl = canvas.getContext('webgl2');
 
-if (!gl) {
-  alert("WebGL not supported!");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+gl.viewport(0, 0, canvas.width, canvas.height);
+
+// Setup uniforms
+const uniforms = {
+    dragMult: 0.38,
+    waterDepth: 1.0,
+    camHeight: 1.5,
+    rayIter: 12,
+    normIter: 36
+};
+
+// Update display values
+document.getElementById('dragMult').addEventListener('input', e => {
+    uniforms.dragMult = parseFloat(e.target.value);
+    document.getElementById('dragVal').textContent = uniforms.dragMult.toFixed(2);
+});
+document.getElementById('waterDepth').addEventListener('input', e => {
+    uniforms.waterDepth = parseFloat(e.target.value);
+    document.getElementById('depthVal').textContent = uniforms.waterDepth.toFixed(1);
+});
+document.getElementById('camHeight').addEventListener('input', e => {
+    uniforms.camHeight = parseFloat(e.target.value);
+    document.getElementById('heightVal').textContent = uniforms.camHeight.toFixed(1);
+});
+document.getElementById('rayIter').addEventListener('input', e => {
+    uniforms.rayIter = parseInt(e.target.value);
+    document.getElementById('rayVal').textContent = uniforms.rayIter;
+});
+document.getElementById('normIter').addEventListener('input', e => {
+    uniforms.normIter = parseInt(e.target.value);
+    document.getElementById('normVal').textContent = uniforms.normIter;
+});
+
+function compileShader(type, source) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(shader));
+    }
+    return shader;
 }
 
-// Vertex shader
-const vsSource = `
-attribute vec2 aPosition;
-attribute vec3 aColor;
-varying vec3 vColor;
-uniform float uAngle;
-
-void main(void) {
-  float c = cos(uAngle);
-  float s = sin(uAngle);
-  mat2 rotation = mat2(c, -s, s, c);
-  gl_Position = vec4(rotation * aPosition, 0.0, 1.0);
-  vColor = aColor;
-}
-`;
-
-// Fragment shader
-const fsSource = `
-precision mediump float;
-varying vec3 vColor;
-void main(void) {
-  gl_FragColor = vec4(vColor, 1.0);
-}
-`;
-
-// Helper to compile shader
-function compileShader(source, type) {
-  const shader = gl.createShader(type);
-  gl.shaderSource(shader, source);
-  gl.compileShader(shader);
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    console.error("Shader compile error:", gl.getShaderInfoLog(shader));
-    gl.deleteShader(shader);
-  }
-  return shader;
+// Load shader files
+// If the page is opened via file://, fetch will fail in most browsers.
+if (location.protocol === 'file:') {
+    console.warn('Warning: page loaded using file://. Fetching shader files usually fails when opened directly from the filesystem. Run a local server (e.g. `python -m http.server`) and open via http://localhost:8000');
 }
 
-const vertexShader = compileShader(vsSource, gl.VERTEX_SHADER);
-const fragmentShader = compileShader(fsSource, gl.FRAGMENT_SHADER);
+Promise.all([
+    fetch('vertex.glsl').then(r => { if (!r.ok) throw new Error('Failed to fetch vertex.glsl: ' + r.status + ' ' + r.statusText); return r.text(); }),
+    fetch('fragment.glsl').then(r => { if (!r.ok) throw new Error('Failed to fetch fragment.glsl: ' + r.status + ' ' + r.statusText); return r.text(); })
+]).then(([vertexSrc, fragmentSrc]) => {
+    const vertShader = compileShader(gl.VERTEX_SHADER, vertexSrc);
+    const fragShader = compileShader(gl.FRAGMENT_SHADER, fragmentSrc);
 
-const program = gl.createProgram();
-gl.attachShader(program, vertexShader);
-gl.attachShader(program, fragmentShader);
-gl.linkProgram(program);
-gl.useProgram(program);
+    const program = gl.createProgram();
+    gl.attachShader(program, vertShader);
+    gl.attachShader(program, fragShader);
+    gl.linkProgram(program);
+    gl.useProgram(program);
 
-// Triangle vertices and colors
-const vertices = new Float32Array([
-  0.0,  0.8,  1.0, 0.0, 0.0, // top (red)
- -0.8, -0.8,  0.0, 1.0, 0.0, // left (green)
-  0.8, -0.8,  0.0, 0.0, 1.0  // right (blue)
-]);
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
 
-const buffer = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+    const vertices = [-1, -1, 1, -1, -1, 1, 1, 1];
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
 
-const FSIZE = vertices.BYTES_PER_ELEMENT;
+    const posLoc = gl.getAttribLocation(program, 'position');
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 8, 0);
 
-const aPosition = gl.getAttribLocation(program, "aPosition");
-gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, FSIZE * 5, 0);
-gl.enableVertexAttribArray(aPosition);
+    let mouseX = 0, mouseY = 0;
+    let lastMouseX = 0, lastMouseY = 0;
+    let isMouseDown = false;
 
-const aColor = gl.getAttribLocation(program, "aColor");
-gl.vertexAttribPointer(aColor, 3, gl.FLOAT, false, FSIZE * 5, FSIZE * 2);
-gl.enableVertexAttribArray(aColor);
+    window.addEventListener('mousedown', () => {
+        isMouseDown = true;
+        lastMouseX = window.innerWidth / 2;
+        lastMouseY = window.innerHeight / 2;
+    });
 
-const uAngle = gl.getUniformLocation(program, "uAngle");
+    window.addEventListener('mouseup', () => {
+        isMouseDown = false;
+    });
 
-let angle = 0;
-function render() {
-  angle += 0.01;
-  gl.clearColor(0, 0, 0, 1);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.uniform1f(uAngle, angle);
-  gl.drawArrays(gl.TRIANGLES, 0, 3);
-  requestAnimationFrame(render);
-}
+    window.addEventListener('mousemove', e => {
+        if (isMouseDown) {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        }
+    });
 
-render();
+    const startTime = Date.now();
+    function animate() {
+        const time = (Date.now() - startTime) * 0.001;
+
+        gl.uniform2f(gl.getUniformLocation(program, 'iResolution'), canvas.width, canvas.height);
+        gl.uniform1f(gl.getUniformLocation(program, 'iTime'), time);
+        gl.uniform2f(gl.getUniformLocation(program, 'iMouse'), mouseX, mouseY);
+        gl.uniform1f(gl.getUniformLocation(program, 'DRAG_MULT'), uniforms.dragMult);
+        gl.uniform1f(gl.getUniformLocation(program, 'WATER_DEPTH'), uniforms.waterDepth);
+        gl.uniform1f(gl.getUniformLocation(program, 'CAMERA_HEIGHT'), uniforms.camHeight);
+        gl.uniform1i(gl.getUniformLocation(program, 'ITERATIONS_RAYMARCH'), uniforms.rayIter);
+        gl.uniform1i(gl.getUniformLocation(program, 'ITERATIONS_NORMAL'), uniforms.normIter);
+
+        // Calculate ship position moving in circle
+        const shipSpeed = 0.5;
+        const shipRadius = 8;
+        const shipX = Math.cos(time * shipSpeed) * shipRadius;
+        const shipZ = Math.sin(time * shipSpeed) * shipRadius;
+        gl.uniform3f(gl.getUniformLocation(program, 'shipPos'), shipX, 0.0, shipZ);
+        gl.uniform1f(gl.getUniformLocation(program, 'shipRadius'), 2.0);
+
+        gl.bindVertexArray(vao);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+        requestAnimationFrame(animate);
+    }
+
+    animate();
+}).catch(err => {
+    console.error('Failed to load shaders:', err);
+    // Add an extra hint for the common file:// case
+    if (location.protocol === 'file:') {
+        console.error('Hint: You are opening the page directly from the filesystem (file://). Start a local HTTP server and open via http:// to allow fetch() to load external shader files.');
+    }
+});
+
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+});
