@@ -12,6 +12,7 @@ uniform vec3 shipPos;
 uniform float shipRadius;
 
 #define NormalizedMouse (iMouse / iResolution)
+#define DEBUG_MODE (0) // 0 = normal render, 1 = wave height map, 2 = normal vectors
 
 // Calculates wave value and its derivative,
 // for the wave direction, position in space, wave frequency and time
@@ -113,7 +114,7 @@ vec3 getRay(vec2 fragCoord)
 {
     vec2 uv = ((fragCoord / iResolution) * 2.0 - 1.0) * vec2(iResolution.x / iResolution.y, 1.0);
     // for fisheye, uncomment following line and comment the next one
-    //vec3 proj = normalize(vec3(uv.x, uv.y, 1.0) + vec3(uv.x, uv.y, -1.0) * pow(length(uv), 2.0) * 0.05);
+    // vec3 proj = normalize(vec3(uv.x, uv.y, 1.0) + vec3(uv.x, uv.y, -1.0) * pow(length(uv), 2.0) * 0.05);
     vec3 proj = normalize(vec3(uv.x, uv.y, 1.5));
     return createRotationMatrixAxisAngle(vec3(0.0, -1.0, 0.0), 3.0 * ((NormalizedMouse.x + 0.5) * 2.0 - 1.0))
         * createRotationMatrixAxisAngle(vec3(1.0, 0.0, 0.0), 0.5 + 1.5 * (((NormalizedMouse.y == 0.0 ? 0.27 : NormalizedMouse.y) * 1.0) * 2.0 - 1.0))
@@ -209,6 +210,32 @@ void main()
     // vec3 waterHitPos = vWorldPos;
     vec3 waterHitPos = origin + ray * dist;
 
+    // === DEBUG MODE: Wave Height Map ===
+    if(DEBUG_MODE == 1)
+    {
+        // Sample wave height at the hit position (no raymarching, just direct query)
+        float waveHeight = getwaves(waterHitPos.xz, ITERATIONS_NORMAL) * WATER_DEPTH;
+        // Normalize to [0, 1]: assume wave height range is [-WATER_DEPTH, WATER_DEPTH]
+        float heightNorm = (waveHeight + WATER_DEPTH) / (2.0 * WATER_DEPTH);
+        heightNorm = clamp(heightNorm, 0.0, 1.0);
+
+        // Simple grayscale
+        gl_FragColor = vec4(vec3(heightNorm), 1.0);
+        return;
+    }
+
+    // === DEBUG MODE: Normal Vectors ===
+    if(DEBUG_MODE == 2)
+    {
+        // Calculate normal at the hit position
+        vec3 N = normal(waterHitPos.xz, 0.01, WATER_DEPTH);
+        // Visualize normals: map from [-1,1] to [0,1]
+        vec3 normalVis = N * 0.5 + 0.5;
+        gl_FragColor = vec4(normalVis, 1.0);
+        return;
+    }
+
+    // === NORMAL MODE: Full Water Rendering ===
     // calculate normal at the hit position
     vec3 N = normal(waterHitPos.xz, 0.01, WATER_DEPTH);
     // smooth the normal with distance to avoid disturbing high frequency noise
@@ -236,5 +263,4 @@ void main()
     // return the combined result
     vec3 C = fresnel * reflection + scattering;
     gl_FragColor = vec4(aces_tonemap(C * 2.0), 1.0);
-    // gl_FragColor = vec4(vPos.xyz, 1.0);
 }
