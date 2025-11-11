@@ -3,65 +3,89 @@ precision highp float;
 uniform vec2 iResolution;
 uniform float iTime;
 uniform vec2 iMouse;
-
 uniform float DRAG_MULT;
 uniform float WATER_DEPTH;
 uniform float CAMERA_HEIGHT;
-uniform int ITERATIONS_RAYMARCH;
 uniform int ITERATIONS_NORMAL;
+uniform int ITERATIONS_RAYMARCH;
 uniform vec3 shipPos;
 uniform float shipRadius;
 
 #define NormalizedMouse (iMouse / iResolution)
 
-vec2 wavedx(vec2 position, vec2 direction, float frequency, float timeshift) {
+// Calculates wave value and its derivative,
+// for the wave direction, position in space, wave frequency and time
+vec2 wavedx(vec2 position, vec2 direction, float frequency, float timeshift)
+{
     float x = dot(direction, position) * frequency + timeshift;
     float wave = exp(sin(x) - 1.0);
     float dx = wave * cos(x);
     return vec2(wave, -dx);
 }
 
-float getwaves(vec2 position, int iterations) {
-    float wavePhaseShift = length(position) * 0.1;
-    float iter = 0.0;
-    float frequency = 1.0;
-    float timeMultiplier = 2.0;
-    float weight = 1.0;
-    float sumOfValues = 0.0;
-    float sumOfWeights = 0.0;
+// Calculates waves by summing octaves of various waves with various parameters
+float getwaves(vec2 position, int iterations)
+{
+    float wavePhaseShift = length(position) * 0.1; // this is to avoid every octave having exactly the same phase everywhere
+    float iter           = 0.0;                    // this will help generating well distributed wave directions
+    float frequency      = 1.0;                    // frequency of the wave, this will change every iteration
+    float timeMultiplier = 2.0;                    // time multiplier for the wave, this will change every iteration
+    float weight         = 1.0;                    // weight in final sum for the wave, this will change every iteration
+    float sumOfValues    = 0.0;                    // will store final sum of values
+    float sumOfWeights   = 0.0;                    // will store final sum of weights
 
-    for(int i=0; i < 64; i++) {
-        if(i >= iterations) break;
-
+    for(int i=0; i < 64; i++)
+    {
+        // generate some wave direction that looks kind of random
         vec2 p = vec2(sin(iter), cos(iter));
+
+        // calculate wave data
         vec2 res = wavedx(position, p, frequency, iTime * timeMultiplier + wavePhaseShift);
+
+        // shift position around according to wave drag and derivative of the wave
         position += p * res.y * weight * DRAG_MULT;
 
+        // add the results to sums
         sumOfValues += res.x * weight;
         sumOfWeights += weight;
 
+        // modify next octave
         weight = mix(weight, 0.0, 0.2);
         frequency *= 1.18;
         timeMultiplier *= 1.07;
+
+        // add some kind of random value to make next wave look random too
         iter += 1232.399963;
     }
+    // calculate and return
     return sumOfValues / sumOfWeights;
 }
 
-float raymarchwater(vec3 camera, vec3 start, vec3 end, float depth) {
+// Raymarches the ray from top water layer boundary to low water layer boundary
+float raymarchwater(vec3 camera, vec3 start, vec3 end, float depth)
+{
     vec3 pos = start;
     vec3 dir = normalize(end - start);
-    for(int i=0; i < 64; i++) {
+    for(int i=0; i < 64; i++)
+    {
+        // the height is from 0 to -depth
         float height = getwaves(pos.xz, ITERATIONS_RAYMARCH) * depth - depth;
-        if(height + 0.01 > pos.y) {
+        // if the waves height almost nearly matches the ray height, assume its a hit and return the hit distance
+        if(height + 0.01 > pos.y)
+        {
             return distance(pos, camera);
         }
+        // iterate forwards according to the height mismatch
         pos += dir * (pos.y - height);
     }
+    // if hit was not registered, just assume hit the top layer,
+    // this makes the raymarching faster and looks better at higher distances
     return distance(start, camera);
 }
 
-vec3 normal(vec2 pos, float e, float depth) {
+// Calculate normal at point by calculating the height at the pos and 2 additional points very close to pos
+vec3 normal(vec2 pos, float e, float depth)
+{
     vec2 ex = vec2(e, 0.0);
     float H = getwaves(pos, ITERATIONS_NORMAL) * depth;
     vec3 a = vec3(pos.x, H, pos.y);
@@ -71,7 +95,9 @@ vec3 normal(vec2 pos, float e, float depth) {
     ));
 }
 
-mat3 createRotationMatrixAxisAngle(vec3 axis, float angle) {
+// Helper function generating a rotation matrix around the axis by the angle
+mat3 createRotationMatrixAxisAngle(vec3 axis, float angle)
+{
     float s = sin(angle);
     float c = cos(angle);
     float oc = 1.0 - c;
@@ -82,19 +108,27 @@ mat3 createRotationMatrixAxisAngle(vec3 axis, float angle) {
     );
 }
 
-vec3 getRay(vec2 fragCoord) {
+// Helper function that generates camera ray based on UV and mouse
+vec3 getRay(vec2 fragCoord)
+{
     vec2 uv = ((fragCoord / iResolution) * 2.0 - 1.0) * vec2(iResolution.x / iResolution.y, 1.0);
+    // for fisheye, uncomment following line and comment the next one
+    //vec3 proj = normalize(vec3(uv.x, uv.y, 1.0) + vec3(uv.x, uv.y, -1.0) * pow(length(uv), 2.0) * 0.05);
     vec3 proj = normalize(vec3(uv.x, uv.y, 1.5));
     return createRotationMatrixAxisAngle(vec3(0.0, -1.0, 0.0), 3.0 * ((NormalizedMouse.x + 0.5) * 2.0 - 1.0))
         * createRotationMatrixAxisAngle(vec3(1.0, 0.0, 0.0), 0.5 + 1.5 * (((NormalizedMouse.y == 0.0 ? 0.27 : NormalizedMouse.y) * 1.0) * 2.0 - 1.0))
         * proj;
 }
 
-float intersectPlane(vec3 origin, vec3 direction, vec3 point, vec3 normal) {
+// Ray-Plane intersection checker
+float intersectPlane(vec3 origin, vec3 direction, vec3 point, vec3 normal)
+{
     return clamp(dot(point - origin, normal) / dot(direction, normal), -1.0, 9991999.0);
 }
 
-vec3 extra_cheap_atmosphere(vec3 raydir, vec3 sundir) {
+// Some very barebones but fast atmosphere approximation
+vec3 extra_cheap_atmosphere(vec3 raydir, vec3 sundir)
+{
     float special_trick = 1.0 / (raydir.y * 1.0 + 0.1);
     float special_trick2 = 1.0 / (sundir.y * 11.0 + 1.0);
     float raysundt = pow(abs(dot(sundir, raydir)), 2.0);
@@ -107,19 +141,27 @@ vec3 extra_cheap_atmosphere(vec3 raydir, vec3 sundir) {
     return bluesky2 * (1.0 + 1.0 * pow(1.0 - raydir.y, 3.0));
 }
 
-vec3 getSunDirection() {
+// Calculate where the sun should be, it will be moving around the sky
+vec3 getSunDirection()
+{
     return normalize(vec3(-0.0773502691896258, 0.5 + sin(iTime * 0.2 + 2.6) * 0.45, 0.5773502691896258));
 }
 
-vec3 getAtmosphere(vec3 dir) {
+// Get atmosphere color for given direction
+vec3 getAtmosphere(vec3 dir)
+{
     return extra_cheap_atmosphere(dir, getSunDirection()) * 0.5;
 }
 
-float getSun(vec3 dir) {
+// Get sun color for given direction
+float getSun(vec3 dir)
+{
     return pow(max(0.0, dot(dir, getSunDirection())), 720.0) * 210.0;
 }
 
-vec3 aces_tonemap(vec3 color) {
+// Great tonemapping function from other shader: https://www.shadertoy.com/view/XsGfWV
+vec3 aces_tonemap(vec3 color)
+{
     mat3 m1 = mat3(
         0.59719, 0.07600, 0.02840,
         0.35458, 0.90834, 0.13383,
@@ -136,44 +178,63 @@ vec3 aces_tonemap(vec3 color) {
     return pow(clamp(m2 * (a / b), 0.0, 1.0), vec3(1.0 / 2.2));
 }
 
-void main() {
+void main()
+{
+    // get the ray
     vec3 ray = getRay(gl_FragCoord.xy);
 
-    if(ray.y >= 0.0) {
+    if(ray.y >= 0.0)
+    {
+        // if ray.y is positive, render the sky
         vec3 C = getAtmosphere(ray) + getSun(ray);
         gl_FragColor = vec4(aces_tonemap(C * 2.0), 1.0);
         return;
     }
-
+    // now ray.y must be negative, water must be hit
+    // define water planes
     vec3 waterPlaneHigh = vec3(0.0, 0.0, 0.0);
     vec3 waterPlaneLow = vec3(0.0, -WATER_DEPTH, 0.0);
+
+    // define ray origin, moving around
     vec3 origin = vec3(iTime * 0.2, CAMERA_HEIGHT, 1.0);
 
+    // calculate intersections and reconstruct positions
     float highPlaneHit = intersectPlane(origin, ray, waterPlaneHigh, vec3(0.0, 1.0, 0.0));
     float lowPlaneHit = intersectPlane(origin, ray, waterPlaneLow, vec3(0.0, 1.0, 0.0));
     vec3 highHitPos = origin + ray * highPlaneHit;
     vec3 lowHitPos = origin + ray * lowPlaneHit;
 
+    // raymatch water and reconstruct the hit pos
     float dist = raymarchwater(origin, highHitPos, lowHitPos, WATER_DEPTH);
+    // vec3 waterHitPos = vWorldPos;
     vec3 waterHitPos = origin + ray * dist;
 
+    // calculate normal at the hit position
     vec3 N = normal(waterHitPos.xz, 0.01, WATER_DEPTH);
+    // smooth the normal with distance to avoid disturbing high frequency noise
     N = mix(N, vec3(0.0, 1.0, 0.0), 0.8 * min(1.0, sqrt(dist * 0.01) * 1.1));
 
+    // calculate fresnel coefficient
     float fresnel = (0.04 + (1.0 - 0.04) * (pow(1.0 - max(0.0, dot(-N, ray)), 5.0)));
+
+    // reflect the ray and make sure it bounces up
     vec3 R = normalize(reflect(ray, N));
     R.y = abs(R.y);
 
+    // calculate the reflection and approximate subsurface scattering
     vec3 reflection = getAtmosphere(R) + getSun(R);
     vec3 scattering = vec3(0.0293, 0.0698, 0.1717) * 0.1 * (0.2 + (waterHitPos.y + WATER_DEPTH) / WATER_DEPTH);
 
-    float distToShip = distance(waterHitPos.xz, shipPos.xz);
-    float foamStrength = 0.0;
-    if(distToShip < shipRadius) {
-        foamStrength = (1.0 - distToShip / shipRadius) * 0.6;
-        scattering += vec3(0.8, 0.85, 0.9) * foamStrength;
-    }
+    // float distToShip = distance(waterHitPos.xz, shipPos.xz);
+    // float foamStrength = 0.0;
+    // if(distToShip < shipRadius)
+    //{
+    //     foamStrength = (1.0 - distToShip / shipRadius) * 0.6;
+    //     scattering += vec3(0.8, 0.85, 0.9) * foamStrength;
+    // }
 
+    // return the combined result
     vec3 C = fresnel * reflection + scattering;
     gl_FragColor = vec4(aces_tonemap(C * 2.0), 1.0);
+    // gl_FragColor = vec4(vPos.xyz, 1.0);
 }
