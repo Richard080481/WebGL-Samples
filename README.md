@@ -7,7 +7,7 @@
 
 ## Run (quick)
 
-Open a terminal (cmd.exe) in the project directory `c:\Users\Richard\Documents\Wave-Simulator` and run one of the following:
+Open a terminal (cmd.exe) in the project directory and run one of the following:
 
 Using Python 3 (built-in):
 
