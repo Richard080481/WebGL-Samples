@@ -12,7 +12,7 @@ uniform vec3 shipPos;
 uniform float shipRadius;
 
 #define NormalizedMouse (iMouse / iResolution)
-#define DEBUG_MODE (0)
+#define DEBUG_MODE (0) // 0 = normal render, 1 = wave height map, 2 = normal vectors
 
 struct BoatHit {
     bool hit;
@@ -47,10 +47,10 @@ float sm_union(float a, float b, float t) {
 
 // Boat Hull SDF
 float sdfBoatHull(vec3 p) {
-    float L = 1.2;                                                          // Boat half-length
-    float H = 0.3;                                                          // Boat half-height
-    float keel = p.y + 0.22;                                                // Boat bottom plane
-    float width = 0.25 + 0.3 * smoothstep(-1.2, 0.5, p.z);  // Boat width
+    float L = 1.2;                                         // Boat half-length
+    float H = 0.3;                                         // Boat half-height
+    float keel = p.y + 0.22;                               // Boat bottom plane
+    float width = 0.25 + 0.3 * smoothstep(-1.2, 0.5, p.z); // Boat width
     float side = abs(p.x) - width;
     float body = max(keel, side);
     float frontBack = abs(p.z) - L;
@@ -414,29 +414,44 @@ void main()
 
     if(DEBUG_MODE == 1)
     {
+        // Sample wave height at the hit position (no raymarching, just direct query)
         float waveHeight = getwaves(waterHitPos.xz, ITERATIONS_NORMAL) * WATER_DEPTH;
+
+        // Normalize to [0, 1]: assume wave height range is [-WATER_DEPTH, WATER_DEPTH]
         float heightNorm = (waveHeight + WATER_DEPTH) / (2.0 * WATER_DEPTH);
         heightNorm = clamp(heightNorm, 0.0, 1.0);
+
+        // Simple grayscale
         gl_FragColor = vec4(vec3(heightNorm), 1.0);
         return;
     }
 
+    // === DEBUG MODE: Normal Vectors ===
     if(DEBUG_MODE == 2)
     {
+        // Calculate normal at the hit position
         vec3 N = normal(waterHitPos.xz, 0.01, WATER_DEPTH);
+
+        // Visualize normals: map from [-1,1] to [0,1]
         vec3 normalVis = N * 0.5 + 0.5;
         gl_FragColor = vec4(normalVis, 1.0);
         return;
     }
 
+    // === NORMAL MODE: Full Water Rendering ===
+    // calculate normal at the hit position
     vec3 N = normal(waterHitPos.xz, 0.01, WATER_DEPTH);
+    // smooth the normal with distance to avoid disturbing high frequency noise
     N = mix(N, vec3(0.0, 1.0, 0.0), 0.8 * min(1.0, sqrt(dist * 0.01) * 1.1));
 
+    // calculate fresnel coefficient
     float fresnel = (0.04 + (1.0 - 0.04) * (pow(1.0 - max(0.0, dot(-N, ray)), 5.0)));
 
+    // reflect the ray and make sure it bounces up
     vec3 R = normalize(reflect(ray, N));
     R.y = abs(R.y);
 
+    // calculate the reflection and approximate subsurface scattering
     vec3 reflection = getAtmosphere(R) + getSun(R);
     vec3 scattering = vec3(0.0293, 0.0698, 0.1717) * 0.1 * (0.2 + (waterHitPos.y + WATER_DEPTH) / WATER_DEPTH);
 
