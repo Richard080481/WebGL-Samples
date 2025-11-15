@@ -8,6 +8,7 @@ uniform float WATER_DEPTH;
 uniform float CAMERA_HEIGHT;
 uniform int ITERATIONS_NORMAL;
 uniform int ITERATIONS_RAYMARCH;
+uniform float SUN_ROTATION_SPEED;
 uniform vec3 shipPos;
 uniform float shipRadius;
 
@@ -267,10 +268,10 @@ vec3 extra_cheap_atmosphere(vec3 raydir, vec3 sundir)
 // sun motion, just fake it, going up and down vertically
 vec3 getSunDirection()
 {
-    float t = iTime * 0.5;
-    float r = 3.0;
-    float cx = 1.0;
-    float cy = -1.0;
+    float t = iTime * 0.5 * SUN_ROTATION_SPEED;
+    float r = 2.0;
+    float cx = 0.0;
+    float cy = 0.0;
 
     float x = cx + r * cos(t);
     float y = cy + r * sin(t);

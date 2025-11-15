@@ -11,7 +11,8 @@ const uniforms = {
     waterDepth: 1.0,
     camHeight: 1.5,
     rayIter: 12,
-    normIter: 36
+    normIter: 36,
+    sunRotationSpeed: 1.0
 };
 
 // Update display values
@@ -34,6 +35,10 @@ document.getElementById('rayIter').addEventListener('input', e => {
 document.getElementById('normIter').addEventListener('input', e => {
     uniforms.normIter = parseInt(e.target.value);
     document.getElementById('normVal').textContent = uniforms.normIter;
+});
+document.getElementById('sunRotationSpeed').addEventListener('input', e => {
+    uniforms.sunRotationSpeed = parseFloat(e.target.value);
+    document.getElementById('sunSpeedVal').textContent = uniforms.sunRotationSpeed.toFixed(1);
 });
 
 function compileShader(type, source) {
@@ -110,6 +115,7 @@ Promise.all([
         gl.uniform1f(gl.getUniformLocation(program, 'CAMERA_HEIGHT'), uniforms.camHeight);
         gl.uniform1i(gl.getUniformLocation(program, 'ITERATIONS_RAYMARCH'), uniforms.rayIter);
         gl.uniform1i(gl.getUniformLocation(program, 'ITERATIONS_NORMAL'), uniforms.normIter);
+        gl.uniform1f(gl.getUniformLocation(program, 'SUN_ROTATION_SPEED'), uniforms.sunRotationSpeed);
 
         // Calculate ship position moving in circle
         const shipSpeed = 0.5;
