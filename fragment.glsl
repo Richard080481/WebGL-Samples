@@ -108,14 +108,14 @@ float hash(vec2 p)
 vec3 generateStars(vec3 rayDir)
 {
     if(rayDir.y < 0.05) return vec3(0.0);
-    
+
     vec2 starCoord = rayDir.xz / max(rayDir.y, 0.01) * 15.0;
     vec2 gridId = floor(starCoord);
     vec2 gridUv = fract(starCoord);
-    
+
     float starRandom = hash(gridId);
     float star = 0.0;
-    
+
     if(starRandom > 0.88)
     {
         vec2 starPos = vec2(hash(gridId + vec2(1.0, 0.0)), hash(gridId + vec2(0.0, 1.0)));
@@ -124,15 +124,15 @@ vec3 generateStars(vec3 rayDir)
         star = pow(star, 1.5) * 12.0;
         star *= (0.5 + 0.5 * hash(gridId + vec2(2.0, 3.0)));
     }
-    
+
     if(starRandom > 0.96)
     {
         star *= 4.0;
     }
-    
+
     star *= 0.9 + 0.1 * sin(iTime * 2.0 + hash(gridId) * 100.0);
     float horizonFade = smoothstep(0.0, 0.2, rayDir.y);
-    
+
     vec3 starColor = vec3(0.9, 0.95, 1.0);
     return starColor * star * horizonFade;
 }
@@ -268,10 +268,10 @@ vec3 extra_cheap_atmosphere(vec3 raydir, vec3 sundir)
 vec3 getSunDirection()
 {
     float cycleSpeed = 0.15;  // day/night switching speed
-    float phase = fract(iTime * cycleSpeed);  
-    
+    float phase = fract(iTime * cycleSpeed);
+
     float height;
-    
+
     if(phase < 0.35)  //daylight
     {
         height = (phase / 0.35) * 0.8;  // 0 → 0.8
@@ -285,7 +285,7 @@ vec3 getSunDirection()
         float transition = (phase - 0.75) / 0.25;
         height = mix(-0.5, 0.0, transition);
     }
-    
+
     // fixed sun position
     return normalize(vec3(0.7, height, 0.6));
 }
@@ -364,31 +364,31 @@ void main()
         // ===== Simplified Day/Night Cycle =====
         vec3 sunDir = getSunDirection();
         float sunHeight = sunDir.y;
-        
+
         // Determine if it's day or night
         bool isNight = (sunHeight < 0.0);  // Sun below horizon = night
-        
+
         // Smooth day/night transition factor
         float dayNightFactor = smoothstep(-0.1, 0.1, sunHeight);
-        
+
         // Atmosphere rendering (bright during day, dark at night)
         vec3 atmosphere = getAtmosphere(ray) * dayNightFactor;
-        
+
         // Sun rendering (only visible during daytime)
         float sun = getSun(ray) * dayNightFactor;
-        
+
         // Starfield rendering (only visible at night)
         vec3 stars = vec3(0.0);
         if(isNight)
         {
             stars = generateStars(ray) * (1.0 - dayNightFactor);
         }
-        
+
         vec3 C = atmosphere + sun + stars;
         gl_FragColor = vec4(aces_tonemap(C * 2.0), 1.0);
         return;
     }
-    
+
     // === NORMAL MODE: Full Water Rendering ===
     // calculate normal at the hit position
     vec3 waterPlaneHigh = vec3(0.0, 0.0, 0.0);
