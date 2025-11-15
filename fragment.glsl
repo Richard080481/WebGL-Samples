@@ -267,27 +267,18 @@ vec3 extra_cheap_atmosphere(vec3 raydir, vec3 sundir)
 // sun motion, just fake it, going up and down vertically
 vec3 getSunDirection()
 {
-    float cycleSpeed = 0.15;  // day/night switching speed
-    float phase = fract(iTime * cycleSpeed);
+    float t = iTime * 0.5;
+    float r = 3.0;
+    float cx = 1.0;
+    float cy = -1.0;
 
-    float height;
+    float x = cx + r * cos(t);
+    float y = cy + r * sin(t);
+    float z = 3.0;
 
-    if(phase < 0.35)  //daylight
-    {
-        height = (phase / 0.35) * 0.8;  // 0 → 0.8
-    }
-    else if(phase < 0.75)  // night (sun under the surface)
-    {
-        height = -0.5;
-    }
-    else  //sun get back to surface from under surface area
-    {
-        float transition = (phase - 0.75) / 0.25;
-        height = mix(-0.5, 0.0, transition);
-    }
-
-    // fixed sun position
-    return normalize(vec3(0.7, height, 0.6));
+    // Camera is at (0,0,0) looking towards +Z
+    // return normalize(vec3(0, 0, 1));
+    return normalize(vec3(x, y, z));
 }
 
 // Get atmosphere color for given direction
@@ -385,6 +376,7 @@ void main()
         }
 
         vec3 C = atmosphere + sun + stars;
+        // vec3 C = getAtmosphere(ray) + getSun(ray);
         gl_FragColor = vec4(aces_tonemap(C * 2.0), 1.0);
         return;
     }
