@@ -116,7 +116,7 @@ Promise.all([
         const shipRadius = 8;
         const shipX = Math.cos(time * shipSpeed) * shipRadius;
         const shipZ = Math.sin(time * shipSpeed) * shipRadius;
-        gl.uniform3f(gl.getUniformLocation(program, 'shipPos'), shipX, 0.0, shipZ);
+        gl.uniform3f(gl.getUniformLocation(program, 'shipPos'), shipX, -0.5, shipZ);
         gl.uniform1f(gl.getUniformLocation(program, 'shipRadius'), 2.0);
 
         gl.bindVertexArray(vao);
