@@ -11,6 +11,7 @@ uniform int ITERATIONS_RAYMARCH;
 uniform float SUN_ROTATION_SPEED;
 uniform vec3 shipPos;
 uniform float shipRadius;
+uniform float shipRotation;
 
 #define NormalizedMouse (iMouse / iResolution)
 #define DEBUG_MODE (0) // 0 = normal render, 1 = wave height map, 2 = normal vectors
@@ -85,6 +86,9 @@ float sdfBoatWindscreen(vec3 p) {
 }
 
 // Combine all part into SpeedBoat
+// TODO:船的形状更加精确
+// TODO:船的颜色和材质
+// TODO:船的朝向
 float sdfSpeedBoat(vec3 p) {
     float d = sdfBoatHull(p);
     d = sm_union(d, sdfBoatBody(p), 0.5);
@@ -322,11 +326,17 @@ BoatHit raymarchBoat(vec3 origin, vec3 ray) {
     float maxDist = 200.0;
     float dBoat;
     float boatScale = 1.0;
+    float angle = shipRotation;
+    mat3 rot = mat3(
+        cos(angle), 0.0, -sin(angle),
+        0.0, 1.0, 0.0,
+        sin(angle), 0.0, cos(angle)
+    );
 
     // Raymarch boat
     for(int i = 0; i < 100; i++) {
         vec3 p = origin + ray * tBoat;
-        vec3 localP = (p - shipPos) / boatScale;
+        vec3 localP = rot * (p - shipPos) / boatScale;
         dBoat = sdfSpeedBoat(localP) * boatScale;
         if(dBoat < 0.001) {
             vec3 Nboat = boatNormal(localP);
