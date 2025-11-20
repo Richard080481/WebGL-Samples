@@ -13,6 +13,8 @@ uniform vec3 shipPos;
 uniform float shipRadius;
 uniform float shipRotation;
 uniform float STAR_DENSITY;
+uniform vec3 camPos;
+uniform vec3 camTarget;
 
 #define NormalizedMouse (iMouse / iResolution)
 #define DEBUG_MODE (0) // 0 = normal render, 1 = wave height map, 2 = normal vectors
@@ -545,7 +547,7 @@ void main()
     // calculate normal at the hit position
     vec3 waterPlaneHigh = vec3(0.0, 0.0, 0.0);
     vec3 waterPlaneLow = vec3(0.0, -WATER_DEPTH, 0.0);
-    vec3 origin = vec3(iTime * 0.2, CAMERA_HEIGHT, 1.0);
+    vec3 origin = camPos;
 
     float highPlaneHit = intersectPlane(origin, ray, waterPlaneHigh, vec3(0.0, 1.0, 0.0));
     float lowPlaneHit = intersectPlane(origin, ray, waterPlaneLow, vec3(0.0, 1.0, 0.0));
