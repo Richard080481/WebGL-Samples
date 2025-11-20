@@ -12,6 +12,7 @@ uniform float SUN_ROTATION_SPEED;
 uniform vec3 shipPos;
 uniform float shipRadius;
 uniform float shipRotation;
+uniform float STAR_DENSITY;
 
 #define NormalizedMouse (iMouse / iResolution)
 #define DEBUG_MODE (0) // 0 = normal render, 1 = wave height map, 2 = normal vectors
@@ -104,42 +105,129 @@ vec3 boatNormal(vec3 p) {
     return normalize(vec3(sdfSpeedBoat(p + vec3(e, 0, 0)) - sdfSpeedBoat(p - vec3(e, 0, 0)), sdfSpeedBoat(p + vec3(0, e, 0)) - sdfSpeedBoat(p - vec3(0, e, 0)), sdfSpeedBoat(p + vec3(0, 0, e)) - sdfSpeedBoat(p - vec3(0, 0, e))));
 }
 
-// star generation function
+//simple noise functions
+
+// Simple 2D noise (Perlin-like)
+float noise(vec2 p)
+{
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f); // Smoothstep
+    
+    float a = fract(sin(dot(i, vec2(127.1, 311.7))) * 43758.5453);
+    float b = fract(sin(dot(i + vec2(1.0, 0.0), vec2(127.1, 311.7))) * 43758.5453);
+    float c = fract(sin(dot(i + vec2(0.0, 1.0), vec2(127.1, 311.7))) * 43758.5453);
+    float d = fract(sin(dot(i + vec2(1.0, 1.0), vec2(127.1, 311.7))) * 43758.5453);
+    
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+//star sky generation functions
 float hash(vec2 p)
 {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
 
+//fbm noise for nebula
+float fbm(vec2 p)
+{
+    float sum  = 0.0;
+    float amp  = 0.5;  // Initial amplitude of the first octave
+    float freq = 1.0;  // Initial frequency of the first octave
+    
+    // 4–5 octaves are enough to get detail without being too expensive
+    for(int i = 0; i < 5; i++)
+    {
+        sum += amp * noise(p * freq);
+        freq *= 2.03;  // Increase frequency every octave
+        amp  *= 0.55;  // Decrease amplitude every octave
+    }
+    return sum;
+}
+
+// Procedural nebula in the sky (uses ray direction + sun height)
+vec3 generateNebula(vec3 rayDir, float sunHeight)
+{
+    // Only visible during night / near-night conditions
+    float nightFactor = smoothstep(-0.1, -0.35, sunHeight); // Stronger when sun goes below horizon
+    if(nightFactor <= 0.0) return vec3(0.0);
+    if(rayDir.y < 0.02) return vec3(0.0);                   // Avoid foggy band right at the horizon
+
+    // Project ray direction into a 2D "sky coordinate" (similar to stars)
+    vec2 skyCoord = vec2(
+        atan(rayDir.z, rayDir.x),               // Azimuth: [-PI, PI]
+        asin(clamp(rayDir.y, -1.0, 1.0))        // Elevation: [-PI/2, PI/2]
+    );
+
+    // Controls the approximate position of the nebula on the sky dome
+    vec2 nebulaCenter = vec2(0.6, 0.15);        // Change this to move the main nebula lobe
+    vec2 uv = skyCoord * 0.7 + nebulaCenter;    // Smaller scale = larger, smoother clouds
+
+    // fbm noise for soft cloudy structure
+    float n = fbm(uv * 3.0);
+
+    // Turn noise into a soft cloud mask using threshold + smoothing
+    float density = smoothstep(0.55, 0.80, n);
+
+    // Radial falloff from the nebula center to give a blob-like shape
+    float r = length(uv - nebulaCenter);
+    float radial = exp(-r * 1.8);              // Larger r → darker / more faded
+
+    float finalMask = density * radial * nightFactor;
+
+    // Very small contributions can be skipped for performance
+    if(finalMask <= 0.001) return vec3(0.0);
+
+    // Two-color gradient nebula (feel free to tweak colors)
+    vec3 colorA = vec3(0.40, 0.10, 0.65);      // Purple tint
+    vec3 colorB = vec3(0.10, 0.60, 0.85);      // Cyan-blue tint
+    float t = clamp(n * 1.3, 0.0, 1.0);
+    vec3 nebulaColor = mix(colorA, colorB, t);
+
+    // Add an extra brightness variation to make the core brighter and edges darker
+    float brightness = 0.6 + 0.6 * fbm(uv * 6.0 + 13.0);
+
+    return nebulaColor * finalMask * brightness * 0.7;
+}
+
 vec3 generateStars(vec3 rayDir)
 {
-    if(rayDir.y < 0.05) return vec3(0.0);
+    if(rayDir.y < 0.02) return vec3(0.0);
+    
+    // Convert ray to 2D sky coordinates
+    vec2 skyCoord = vec2(
+        atan(rayDir.z, rayDir.x) * 2.0,
+        asin(clamp(rayDir.y, -1.0, 1.0)) * 2.0
+    );
+    
+    // Create grid
+    vec2 gridCoord = skyCoord * 50.0;
+    vec2 gridId = floor(gridCoord);
+    vec2 gridUv = fract(gridCoord);  // Position within cell [0, 1]
+    
+    // Random value for this grid cell
+    float random = hash(gridId);
+    // Map STAR_DENSITY (0.0– ~0.1) → probability of a star per cell
+    float density = clamp(STAR_DENSITY, 0.0, 0.2);   // safety clamp
 
-    vec2 starCoord = rayDir.xz / max(rayDir.y, 0.01) * 15.0;
-    vec2 gridId = floor(starCoord);
-    vec2 gridUv = fract(starCoord);
-
-    float starRandom = hash(gridId);
-    float star = 0.0;
-
-    if(starRandom > 0.88)
+    if(random > 1.0 - density)
     {
-        vec2 starPos = vec2(hash(gridId + vec2(1.0, 0.0)), hash(gridId + vec2(0.0, 1.0)));
+        // Star position within the cell (also random)
+        vec2 starPos = vec2(
+            hash(gridId + vec2(1.0, 0.0)),
+            hash(gridId + vec2(0.0, 1.0))
+        );
+        
+        // Distance from current position to star center
         float dist = length(gridUv - starPos);
-        star = 1.0 / (1.0 + dist * 40.0);
-        star = pow(star, 1.5) * 12.0;
-        star *= (0.5 + 0.5 * hash(gridId + vec2(2.0, 3.0)));
+        
+        // Create small point star
+        float star = smoothstep(0.08, 0.0, dist);  // Sharp falloff
+        
+        return vec3(star);
     }
-
-    if(starRandom > 0.96)
-    {
-        star *= 4.0;
-    }
-
-    star *= 0.9 + 0.1 * sin(iTime * 2.0 + hash(gridId) * 100.0);
-    float horizonFade = smoothstep(0.0, 0.2, rayDir.y);
-
-    vec3 starColor = vec3(0.9, 0.95, 1.0);
-    return starColor * star * horizonFade;
+    
+    return vec3(0.0);
 }
 
 // Calculates wave value and its derivative,
@@ -363,35 +451,65 @@ void main()
 
     if(ray.y >= 0.0)
     {
-        // ===== Simplified Day/Night Cycle =====
         vec3 sunDir = getSunDirection();
         float sunHeight = sunDir.y;
 
-        // Determine if it's day or night
-        bool isNight = (sunHeight < 0.0);  // Sun below horizon = night
+        //ranges to match actual sun motion
+        vec3 daySky = getAtmosphere(ray);
+        vec3 deepBlueSky = vec3(0.01, 0.03, 0.15);
+        vec3 nightSky = vec3(0.0);
+        
+        // fixed ranges (sun can only reach ~-0.55 minimum)
+        float dayFactor = smoothstep(-0.4, 0.3, sunHeight);
+        float deepBlueFactor = smoothstep(-0.55, -0.2, sunHeight);
+        float pureBlackFactor = smoothstep(-0.25, -0.55, sunHeight);
+        
+        vec3 baseColor = mix(deepBlueSky, daySky, dayFactor);
+        baseColor = mix(nightSky, baseColor, 1.0 - pureBlackFactor);
 
-        // Smooth day/night transition factor
-        float dayNightFactor = smoothstep(-0.1, 0.1, sunHeight);
-
-        // Atmosphere rendering (bright during day, dark at night)
-        vec3 atmosphere = getAtmosphere(ray) * dayNightFactor;
-
-        // Sun rendering (only visible during daytime)
-        float sun = getSun(ray) * dayNightFactor;
-
-        // Starfield rendering (only visible at night)
-        vec3 stars = vec3(0.0);
-        if(isNight)
+        //twilight Colors
+        vec3 twilightColor = vec3(0.0);
+        if(sunHeight < 0.4 && sunHeight > -0.5)
         {
-            stars = generateStars(ray) * (1.0 - dayNightFactor);
+            float horizonGlow = exp(-pow(ray.y * 2.5, 2.0));
+            
+            // Golden phase
+            vec3 golden = vec3(1.0, 0.8, 0.4);
+            float goldenIntensity = smoothstep(-0.15, 0.4, sunHeight) * 
+                                    smoothstep(0.4, -0.05, sunHeight);
+            
+            // Orange/Red phase
+            vec3 orangeRed = vec3(1.0, 0.4, 0.2);
+            float orangeIntensity = smoothstep(-0.3, 0.15, sunHeight) * 
+                                    smoothstep(0.3, -0.2, sunHeight);
+            
+            // Purple phase
+            vec3 purple = vec3(0.4, 0.15, 0.6);
+            float purpleIntensity = smoothstep(-0.5, -0.1, sunHeight) * 
+                                    smoothstep(0.1, -0.4, sunHeight);
+            
+            twilightColor = (golden * goldenIntensity * 0.5 + 
+                            orangeRed * orangeIntensity * 0.4 + 
+                            purple * purpleIntensity * 0.3) * horizonGlow;
         }
 
-        vec3 C = atmosphere + sun + stars;
-        // vec3 C = getAtmosphere(ray) + getSun(ray);
+        //Sun 
+        float sun = getSun(ray) * max(0.0, smoothstep(-0.25, 0.3, sunHeight));
+
+        //tars 
+        vec3 stars = vec3(0.0);
+        if(sunHeight < -0.2)
+        {
+            float starFactor = smoothstep(-0.2, -0.5, sunHeight);
+            stars = generateStars(ray) * starFactor;
+        }
+        //Nebula
+        vec3 nebula = generateNebula(ray, sunHeight);
+
+        vec3 C = baseColor + twilightColor + sun + stars + nebula;
         gl_FragColor = vec4(aces_tonemap(C * 2.0), 1.0);
         return;
     }
-
     // === NORMAL MODE: Full Water Rendering ===
     // calculate normal at the hit position
     vec3 waterPlaneHigh = vec3(0.0, 0.0, 0.0);

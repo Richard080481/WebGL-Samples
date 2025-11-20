@@ -12,7 +12,8 @@ const uniforms = {
     camHeight: 1.5,
     rayIter: 12,
     normIter: 36,
-    sunRotationSpeed: 1.0
+    sunRotationSpeed: 1.0,
+    starDensity: 0.03
 };
 
 // Update display values
@@ -39,6 +40,10 @@ document.getElementById('normIter').addEventListener('input', e => {
 document.getElementById('sunRotationSpeed').addEventListener('input', e => {
     uniforms.sunRotationSpeed = parseFloat(e.target.value);
     document.getElementById('sunSpeedVal').textContent = uniforms.sunRotationSpeed.toFixed(1);
+});
+document.getElementById('starDensity').addEventListener('input', e => {
+    uniforms.starDensity = parseFloat(e.target.value);
+    document.getElementById('starDensityVal').textContent = uniforms.starDensity.toFixed(3);
 });
 
 function compileShader(type, source) {
@@ -116,6 +121,8 @@ Promise.all([
         gl.uniform1i(gl.getUniformLocation(program, 'ITERATIONS_RAYMARCH'), uniforms.rayIter);
         gl.uniform1i(gl.getUniformLocation(program, 'ITERATIONS_NORMAL'), uniforms.normIter);
         gl.uniform1f(gl.getUniformLocation(program, 'SUN_ROTATION_SPEED'), uniforms.sunRotationSpeed);
+        gl.uniform1f(gl.getUniformLocation(program, 'STAR_DENSITY'), uniforms.starDensity);
+
 
         // Calculate ship position moving in circle
         const shipSpeed = 0.5;
