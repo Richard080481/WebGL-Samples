@@ -52,7 +52,7 @@ float sdfBoatHull(vec3 p) {
     float L = 1.2;                                         // Boat half-length
     float H = 0.3;                                         // Boat half-height
     float keel = p.y + 0.22;                               // Boat bottom plane
-    float width = 0.25 + 0.3 * smoothstep(-1.2, 0.5, p.z); // Boat width
+    float width = 0.25 + 0.3 * smoothstep(0.5, -1.2, p.z); // Boat width
     float side = abs(p.x) - width;
     float body = max(keel, side);
     float frontBack = abs(p.z) - L;
@@ -60,39 +60,48 @@ float sdfBoatHull(vec3 p) {
     return max(max(body, frontBack), heightLimit);
 }
 
+float sdfRoundedBox(vec3 p, vec3 b, float r) {
+    vec3 q = abs(p) - b;
+    return length(max(q, 0.0)) - r;
+}
+
 // Boat Body SDF
 float sdfBoatBody(vec3 p) {
-    return sdfBox(p - vec3(0.0, 0.3, 0.0), vec3(0.6, 0.3, 1.2));
+    return sdfRoundedBox(p - vec3(0.0, 0.0, 0.0), vec3(0.55, 0.26, 1.2), 0.06);
 }
 
 // Boat Nose SDF
 float sdfBoatNose(vec3 p) {
-    vec3 q = p;
-    q.z *= 1.5;
-    float taper = p.z * 0.8;
-    return sdfBox(q, vec3(0.35 - taper, 0.25, 0.9));
+    vec3 q = p - vec3(0.0, 0.0, 1.2);
+    float L = 0.7;
+    float t = clamp(q.z / L, 0.0, 1.0);
+    float taper = t * t;
+    float halfWidth  = mix(0.55, 0.0, taper);
+    float halfHeight = mix(0.26, 0.0, taper);
+    vec2 d = abs(q.xy) - vec2(halfWidth, halfHeight);
+    float crossSection = length(max(d, 0.0)) - 0.06;
+    float zBound = max(-q.z, q.z - L);
+    return max(crossSection, zBound);
 }
 
 // Boat Cockpit SDF
 float sdfBoatCockpit(vec3 p) {
-    return sdfBox(p - vec3(0.0, 0.45, -0.3), vec3(0.3, 0.2, 0.4));
+    return sdfBox(p - vec3(0.0, 0.4, -0.3), vec3(0.4, 0.2, 0.4));
 }
 
 // Boat Windscreen SDF
 float sdfBoatWindscreen(vec3 p) {
-    vec3 q = p - vec3(0.0, 0.5, -0.2);
-    q = q * mat3(1.0, 0.0, 0.0, 0.0, 0.8, 0.3, 0.0, -0.3, 0.8);
-    return sdfBox(q, vec3(0.25, 0.1, 0.05));
+    vec3 q = p - vec3(0.0, 0.4, 0.6);
+    q = q * mat3(1.0, 0.0, 0.0, 0.0, -0.8, 0.7, 0.0, 0.7, 0.8);
+    return sdfBox(q, vec3(0.4, 0.2, 0.01));
 }
 
 // Combine all part into SpeedBoat
-// TODO:船的形状更加精确
 // TODO:船的颜色和材质
-// TODO:船的朝向
 float sdfSpeedBoat(vec3 p) {
     float d = sdfBoatHull(p);
-    d = sm_union(d, sdfBoatBody(p), 0.5);
-    d = sm_union(d, sdfBoatNose(p), 0.3);
+    d = sm_union(d, sdfBoatBody(p), 0.3);
+    d = min(d, sdfBoatNose(p));
     d = sm_union(d, sdfBoatCockpit(p), 0.2);
     d = sm_union(d, sdfBoatWindscreen(p), 0.15);
     return d;
