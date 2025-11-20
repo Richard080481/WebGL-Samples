@@ -23,11 +23,6 @@ struct BoatHit {
 };
 
 // SDF basic shapes
-// Shpere SDF return distance from point to shpere
-float sdfShpere(vec3 p, float r) {
-    return length(p) - r;
-}
-
 // Box SDF return distance from point to box
 // b = vec3(width/2, height/2, depth/2)
 float sdfBox(vec3 p, vec3 b) {
@@ -35,20 +30,16 @@ float sdfBox(vec3 p, vec3 b) {
     return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
 }
 
-// Cylinder SDF return distance from point to box
-float sdfCylinder(vec3 p, float r, float h) {
-    vec2 d = abs(vec2(length(p.xz), p.y)) - vec2(r, h);
-    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
-}
-
 // Create a smooth transition at the contact point between the two SDFs.
-float sm_union(float a, float b, float t) {
-    float h = clamp(0.5 + 0.5 * (b - a) / t, 0.0, 1.0);
-    return mix(b, a, h) - t * h * (1.0 - h);
+vec2 sm_union(vec2 a, vec2 b, float t) {
+    float h = clamp(0.5 + 0.5 * (b.x - a.x) / t, 0.0, 1.0);
+    float d = mix(b.x, a.x, h) - t * h * (1.0 - h);
+    float material = (a.x < b.x) ? a.y : b.y;
+    return vec2(d, material);
 }
 
 // Boat Hull SDF
-float sdfBoatHull(vec3 p) {
+vec2 sdfBoatHull(vec3 p) {
     float L = 1.2;                                         // Boat half-length
     float H = 0.3;                                         // Boat half-height
     float keel = p.y + 0.22;                               // Boat bottom plane
@@ -57,7 +48,8 @@ float sdfBoatHull(vec3 p) {
     float body = max(keel, side);
     float frontBack = abs(p.z) - L;
     float heightLimit = abs(p.y) - H;
-    return max(max(body, frontBack), heightLimit);
+    float d = max(max(body, frontBack), heightLimit);
+    return vec2(d, 1.0);
 }
 
 float sdfRoundedBox(vec3 p, vec3 b, float r) {
@@ -66,12 +58,13 @@ float sdfRoundedBox(vec3 p, vec3 b, float r) {
 }
 
 // Boat Body SDF
-float sdfBoatBody(vec3 p) {
-    return sdfRoundedBox(p - vec3(0.0, 0.0, 0.0), vec3(0.55, 0.26, 1.2), 0.06);
+vec2 sdfBoatBody(vec3 p) {
+    float d = sdfRoundedBox(p - vec3(0.0, 0.0, 0.0), vec3(0.55, 0.26, 1.2), 0.06);
+    return vec2(d, 1.0);
 }
 
 // Boat Nose SDF
-float sdfBoatNose(vec3 p) {
+vec2 sdfBoatNose(vec3 p) {
     vec3 q = p - vec3(0.0, 0.0, 1.2);
     float L = 0.7;
     float t = clamp(q.z / L, 0.0, 1.0);
@@ -81,27 +74,26 @@ float sdfBoatNose(vec3 p) {
     vec2 d = abs(q.xy) - vec2(halfWidth, halfHeight);
     float crossSection = length(max(d, 0.0)) - 0.06;
     float zBound = max(-q.z, q.z - L);
-    return max(crossSection, zBound);
+    return vec2(max(crossSection, zBound), 1.0);
 }
 
 // Boat Cockpit SDF
-float sdfBoatCockpit(vec3 p) {
-    return sdfBox(p - vec3(0.0, 0.4, -0.3), vec3(0.4, 0.2, 0.4));
+vec2 sdfBoatCockpit(vec3 p) {
+    return vec2(sdfBox(p - vec3(0.0, 0.4, -0.3), vec3(0.4, 0.2, 0.4)), 3.0);
 }
 
 // Boat Windscreen SDF
-float sdfBoatWindscreen(vec3 p) {
+vec2 sdfBoatWindscreen(vec3 p) {
     vec3 q = p - vec3(0.0, 0.4, 0.6);
     q = q * mat3(1.0, 0.0, 0.0, 0.0, -0.8, 0.7, 0.0, 0.7, 0.8);
-    return sdfBox(q, vec3(0.4, 0.2, 0.01));
+    return vec2(sdfBox(q, vec3(0.4, 0.2, 0.01)), 2.0);
 }
 
 // Combine all part into SpeedBoat
-// TODO:船的颜色和材质
-float sdfSpeedBoat(vec3 p) {
-    float d = sdfBoatHull(p);
+vec2 sdfSpeedBoat(vec3 p) {
+    vec2 d = sdfBoatHull(p);
     d = sm_union(d, sdfBoatBody(p), 0.3);
-    d = min(d, sdfBoatNose(p));
+    d = vec2(min(d.x, sdfBoatNose(p).x), 1.0);
     d = sm_union(d, sdfBoatCockpit(p), 0.2);
     d = sm_union(d, sdfBoatWindscreen(p), 0.15);
     return d;
@@ -110,7 +102,7 @@ float sdfSpeedBoat(vec3 p) {
 // Compute normal of the boat SDF using central difference
 vec3 boatNormal(vec3 p) {
     float e = 0.001;
-    return normalize(vec3(sdfSpeedBoat(p + vec3(e, 0, 0)) - sdfSpeedBoat(p - vec3(e, 0, 0)), sdfSpeedBoat(p + vec3(0, e, 0)) - sdfSpeedBoat(p - vec3(0, e, 0)), sdfSpeedBoat(p + vec3(0, 0, e)) - sdfSpeedBoat(p - vec3(0, 0, e))));
+    return normalize(vec3(sdfSpeedBoat(p + vec3(e, 0, 0)).x - sdfSpeedBoat(p - vec3(e, 0, 0)).x, sdfSpeedBoat(p + vec3(0, e, 0)).x - sdfSpeedBoat(p - vec3(0, e, 0)).x, sdfSpeedBoat(p + vec3(0, 0, e)).x - sdfSpeedBoat(p - vec3(0, 0, e)).x));
 }
 
 // star generation function
@@ -326,6 +318,33 @@ vec3 aces_tonemap(vec3 color)
     return pow(clamp(m2 * (a / b), 0.0, 1.0), vec3(1.0 / 2.2));
 }
 
+vec3 shadeMaterial(float id, vec3 N, vec3 V, vec3 L, vec3 R) {
+    float NV = max(dot(N, -V), 0.0);
+    // Blinn-Phong
+    float specPower = 80.0;
+    float spec = pow(max(dot(N, normalize(L + V)), 0.0), specPower);
+    // env reflection
+    vec3 env = getAtmosphere(R) + getSun(R);
+    // material colors
+    if (id == 1.0) {
+        return vec3(0.7, 0.05, 0.05) * max(dot(N, L), 0.0) + spec*0.5 + env*0.15;
+    }
+    else if (id == 2.0) {
+        float F0 = 0.04;
+        float fresnel = F0 + (1.0 - F0) * pow(1.0 - NV, 5.0);
+        vec3 refractDir = normalize(refract(V, N, 1.0 / 1.5));
+        vec3 refracted = getAtmosphere(refractDir);
+        vec3 tint = vec3(0.35, 0.45, 0.6);
+        refracted *= tint * 0.7;
+        vec3 reflected = env * 1.3 + spec * 2.0;
+        return mix(refracted, reflected, fresnel);
+    }
+    else if (id == 3.0) {
+        return vec3(0.75, 0.75, 0.75) * max(dot(N, L), 0.0) + spec*0.1 + env*0.1;
+    }   
+    return vec3(1.0);
+}
+
 BoatHit raymarchBoat(vec3 origin, vec3 ray) {
     BoatHit result;
     result.hit = false;
@@ -334,6 +353,7 @@ BoatHit raymarchBoat(vec3 origin, vec3 ray) {
     float tBoat = 0.0;
     float maxDist = 200.0;
     float dBoat;
+    float matID = 1.0;
     float boatScale = 1.0;
     float angle = shipRotation;
     mat3 rot = mat3(
@@ -346,16 +366,18 @@ BoatHit raymarchBoat(vec3 origin, vec3 ray) {
     for(int i = 0; i < 100; i++) {
         vec3 p = origin + ray * tBoat;
         vec3 localP = rot * (p - shipPos) / boatScale;
-        dBoat = sdfSpeedBoat(localP) * boatScale;
+        vec2 speedBoat = sdfSpeedBoat(localP) * boatScale;
+        dBoat = speedBoat.x;
+        matID = speedBoat.y;
         if(dBoat < 0.001) {
             vec3 Nboat = boatNormal(localP);
-            vec3 light = getSunDirection();
-            float diff = max(dot(Nboat, light), 0.2);
-
-            vec3 boatColor = vec3(1.0);
-
+            vec3 L = normalize(getSunDirection());
+            vec3 V = normalize(-ray);        // view direction
+            vec3 H = normalize(L + V);       // half vector
+            vec3 R = reflect(ray, Nboat);
+            vec3 color = shadeMaterial(matID, Nboat, V, L, R);
             result.hit = true;
-            result.color = boatColor * diff;
+            result.color = color;
             result.t = tBoat;
             return result;
         }

@@ -40,6 +40,10 @@ document.getElementById('sunRotationSpeed').addEventListener('input', e => {
     uniforms.sunRotationSpeed = parseFloat(e.target.value);
     document.getElementById('sunSpeedVal').textContent = uniforms.sunRotationSpeed.toFixed(1);
 });
+document.getElementById('boatRotationSpeed').addEventListener('input', e => {
+    uniforms.boatRotationSpeed = parseFloat(e.target.value);
+    document.getElementById('boatSpeedVal').textContent = uniforms.boatRotationSpeed.toFixed(1);
+});
 
 function compileShader(type, source) {
     const shader = gl.createShader(type);
@@ -118,7 +122,7 @@ Promise.all([
         gl.uniform1f(gl.getUniformLocation(program, 'SUN_ROTATION_SPEED'), uniforms.sunRotationSpeed);
 
         // Calculate ship position moving in circle
-        const shipSpeed = 0.5;
+        const shipSpeed = uniforms.boatRotationSpeed / 10.0 || 0.5;
         const shipRadius = 8;
         const shipX = Math.cos(time * shipSpeed) * shipRadius;
         const shipZ = Math.sin(time * shipSpeed) * shipRadius;
