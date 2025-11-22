@@ -12,7 +12,6 @@ gl.viewport(0, 0, canvas.width, canvas.height);
 
 // Setup uniforms
 const uniforms = {
-    dragMult: 0.38,
     waterDepth: 1.0,
     camHeight: 1.5,
     rayIter: 12,
@@ -36,10 +35,6 @@ let boatProj = mat4Identity();
 let boat_uModel, boat_uView, boat_uProj, boat_uColor, boat_uLightDir;
 
 // Update display values
-document.getElementById('dragMult').addEventListener('input', e => {
-    uniforms.dragMult = parseFloat(e.target.value);
-    document.getElementById('dragVal').textContent = uniforms.dragMult.toFixed(2);
-});
 document.getElementById('waterDepth').addEventListener('input', e => {
     uniforms.waterDepth = parseFloat(e.target.value);
     document.getElementById('depthVal').textContent = uniforms.waterDepth.toFixed(1);
@@ -406,7 +401,6 @@ Promise.all([
         gl.uniform2f(gl.getUniformLocation(program, 'iResolution'), canvas.width, canvas.height);
         gl.uniform1f(gl.getUniformLocation(program, 'iTime'), time);
         gl.uniform2f(gl.getUniformLocation(program, 'iMouse'), mouseX, mouseY);
-        gl.uniform1f(gl.getUniformLocation(program, 'DRAG_MULT'), uniforms.dragMult);
         gl.uniform1f(gl.getUniformLocation(program, 'WATER_DEPTH'), uniforms.waterDepth);
         gl.uniform1f(gl.getUniformLocation(program, 'CAMERA_HEIGHT'), uniforms.camHeight);
         gl.uniform1i(gl.getUniformLocation(program, 'ITERATIONS_RAYMARCH'), uniforms.rayIter);
