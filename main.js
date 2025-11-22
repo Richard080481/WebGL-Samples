@@ -1,6 +1,9 @@
 const canvas = document.getElementById('canvas');
 const gl = canvas.getContext('webgl2');
 
+// Prevent the context menu so right-click can be used for dragging
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 gl.viewport(0, 0, canvas.width, canvas.height);
@@ -341,16 +344,22 @@ Promise.all([
     let lastMouseX = 0, lastMouseY = 0;
     let isMouseDown = false;
 
-    window.addEventListener('mousedown', () => {
-        isMouseDown = true;
-        lastMouseX = window.innerWidth / 2;
-        lastMouseY = window.innerHeight / 2;
+    // Start dragging only when the right mouse button (button === 2) is pressed.
+    window.addEventListener('mousedown', (e) => {
+        if (e.button === 2) {
+            isMouseDown = true;
+            // Use the actual mouse position as the starting reference
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        }
     });
 
+    // Stop dragging on any mouse up (covers right button release)
     window.addEventListener('mouseup', () => {
         isMouseDown = false;
     });
 
+    // On mouse move, update mouseX/mouseY only while dragging (right button held)
     window.addEventListener('mousemove', e => {
         if (isMouseDown) {
             mouseX = e.clientX;
@@ -405,7 +414,7 @@ Promise.all([
             gl.useProgram(boatProgram);
             gl.bindVertexArray(boatVAO);
 
-            const s = 1.0 / 1000.0; 
+            const s = 1.0 / 1000.0;
             const scale = new Float32Array([
                 s,0,0,0,
                 0,s,0,0,
