@@ -116,12 +116,12 @@ float noise(vec2 p)
     vec2 i = floor(p);
     vec2 f = fract(p);
     f = f * f * (3.0 - 2.0 * f); // Smoothstep
-    
+
     float a = fract(sin(dot(i, vec2(127.1, 311.7))) * 43758.5453);
     float b = fract(sin(dot(i + vec2(1.0, 0.0), vec2(127.1, 311.7))) * 43758.5453);
     float c = fract(sin(dot(i + vec2(0.0, 1.0), vec2(127.1, 311.7))) * 43758.5453);
     float d = fract(sin(dot(i + vec2(1.0, 1.0), vec2(127.1, 311.7))) * 43758.5453);
-    
+
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
@@ -137,7 +137,7 @@ float fbm(vec2 p)
     float sum  = 0.0;
     float amp  = 0.5;  // Initial amplitude of the first octave
     float freq = 1.0;  // Initial frequency of the first octave
-    
+
     // 4–5 octaves are enough to get detail without being too expensive
     for(int i = 0; i < 5; i++)
     {
@@ -196,18 +196,18 @@ vec3 generateNebula(vec3 rayDir, float sunHeight)
 vec3 generateStars(vec3 rayDir)
 {
     if(rayDir.y < 0.02) return vec3(0.0);
-    
+
     // Convert ray to 2D sky coordinates
     vec2 skyCoord = vec2(
         atan(rayDir.z, rayDir.x) * 2.0,
         asin(clamp(rayDir.y, -1.0, 1.0)) * 2.0
     );
-    
+
     // Create grid
     vec2 gridCoord = skyCoord * 50.0;
     vec2 gridId = floor(gridCoord);
     vec2 gridUv = fract(gridCoord);  // Position within cell [0, 1]
-    
+
     // Random value for this grid cell
     float random = hash(gridId);
     // Map STAR_DENSITY (0.0– ~0.1) → probability of a star per cell
@@ -220,16 +220,16 @@ vec3 generateStars(vec3 rayDir)
             hash(gridId + vec2(1.0, 0.0)),
             hash(gridId + vec2(0.0, 1.0))
         );
-        
+
         // Distance from current position to star center
         float dist = length(gridUv - starPos);
-        
+
         // Create small point star
         float star = smoothstep(0.08, 0.0, dist);  // Sharp falloff
-        
+
         return vec3(star);
     }
-    
+
     return vec3(0.0);
 }
 
@@ -431,7 +431,7 @@ vec3 shadeMaterial(float id, vec3 N, vec3 V, vec3 L, vec3 R) {
     }
     else if (id == 3.0) {
         return vec3(0.75, 0.75, 0.75) * max(dot(N, L), 0.0) + spec*0.1 + env*0.1;
-    }   
+    }
     return vec3(1.0);
 }
 
@@ -491,12 +491,12 @@ void main()
         vec3 daySky = getAtmosphere(ray);
         vec3 deepBlueSky = vec3(0.01, 0.03, 0.15);
         vec3 nightSky = vec3(0.0);
-        
+
         // fixed ranges (sun can only reach ~-0.55 minimum)
         float dayFactor = smoothstep(-0.4, 0.3, sunHeight);
         float deepBlueFactor = smoothstep(-0.55, -0.2, sunHeight);
         float pureBlackFactor = smoothstep(-0.25, -0.55, sunHeight);
-        
+
         vec3 baseColor = mix(deepBlueSky, daySky, dayFactor);
         baseColor = mix(nightSky, baseColor, 1.0 - pureBlackFactor);
 
@@ -505,31 +505,31 @@ void main()
         if(sunHeight < 0.4 && sunHeight > -0.5)
         {
             float horizonGlow = exp(-pow(ray.y * 2.5, 2.0));
-            
+
             // Golden phase
             vec3 golden = vec3(1.0, 0.8, 0.4);
-            float goldenIntensity = smoothstep(-0.15, 0.4, sunHeight) * 
+            float goldenIntensity = smoothstep(-0.15, 0.4, sunHeight) *
                                     smoothstep(0.4, -0.05, sunHeight);
-            
+
             // Orange/Red phase
             vec3 orangeRed = vec3(1.0, 0.4, 0.2);
-            float orangeIntensity = smoothstep(-0.3, 0.15, sunHeight) * 
+            float orangeIntensity = smoothstep(-0.3, 0.15, sunHeight) *
                                     smoothstep(0.3, -0.2, sunHeight);
-            
+
             // Purple phase
             vec3 purple = vec3(0.4, 0.15, 0.6);
-            float purpleIntensity = smoothstep(-0.5, -0.1, sunHeight) * 
+            float purpleIntensity = smoothstep(-0.5, -0.1, sunHeight) *
                                     smoothstep(0.1, -0.4, sunHeight);
-            
-            twilightColor = (golden * goldenIntensity * 0.5 + 
-                            orangeRed * orangeIntensity * 0.4 + 
+
+            twilightColor = (golden * goldenIntensity * 0.5 +
+                            orangeRed * orangeIntensity * 0.4 +
                             purple * purpleIntensity * 0.3) * horizonGlow;
         }
 
-        //Sun 
+        //Sun
         float sun = getSun(ray) * max(0.0, smoothstep(-0.25, 0.3, sunHeight));
 
-        //tars 
+        //tars
         vec3 stars = vec3(0.0);
         if(sunHeight < -0.2)
         {
