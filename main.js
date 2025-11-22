@@ -4,8 +4,10 @@ const gl = canvas.getContext('webgl2');
 // Prevent the context menu so right-click can be used for dragging
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+let resolutionScale = 1.0;
+
+canvas.width = Math.max(1, Math.floor(window.innerWidth * resolutionScale));
+canvas.height = Math.max(1, Math.floor(window.innerHeight * resolutionScale));
 gl.viewport(0, 0, canvas.width, canvas.height);
 
 // Setup uniforms
@@ -66,6 +68,25 @@ document.getElementById('starDensity').addEventListener('input', e => {
     uniforms.starDensity = parseFloat(e.target.value);
     document.getElementById('starDensityVal').textContent = uniforms.starDensity.toFixed(3);
 });
+
+// Resolution scale slider (multiplier): 0.25 = 25%, 1.0 = 100%
+const resSlider = document.getElementById('resolutionScale');
+const resLabel = document.getElementById('resolutionVal');
+if (resSlider) {
+    resSlider.addEventListener('input', e => {
+        resolutionScale = parseFloat(e.target.value);
+        // Show percentage
+        resLabel.textContent = Math.round(resolutionScale * 100) + '%';
+        // Resize drawing buffer
+        canvas.width = Math.max(1, Math.floor(window.innerWidth * resolutionScale));
+        canvas.height = Math.max(1, Math.floor(window.innerHeight * resolutionScale));
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        // update boat projection aspect
+        boatProj = mat4Perspective(Math.PI/4, canvas.width / canvas.height, 0.1, 500.0);
+    });
+    // initialize label
+    resLabel.textContent = Math.round(resolutionScale * 100) + '%';
+}
 
 function compileShader(type, source) {
     const shader = gl.createShader(type);
@@ -456,7 +477,10 @@ Promise.all([
 });
 
 window.addEventListener('resize', () => {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    // Respect resolutionScale when resizing
+    canvas.width = Math.max(1, Math.floor(window.innerWidth * resolutionScale));
+    canvas.height = Math.max(1, Math.floor(window.innerHeight * resolutionScale));
     gl.viewport(0, 0, canvas.width, canvas.height);
+    // update boat projection aspect
+    boatProj = mat4Perspective(Math.PI/4, canvas.width / canvas.height, 0.1, 500.0);
 });
